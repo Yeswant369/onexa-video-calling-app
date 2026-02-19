@@ -46,3 +46,4 @@ A minimal, secure, 3-person WebRTC video calling application built with Node.js,
 - **WebRTC**: Uses the native browser API (`RTCPeerConnection`).
 - **STUN**: Uses Google's free STUN server (`stun:stun.l.google.com:19302`).
 - **Scaling**: While this is a P2P implementation for 3 users, the signaling logic can be extended to support more users or integrated with an SFU (Selective Forwarding Unit) if needed in the future.
+# onexa-video-calling-app
