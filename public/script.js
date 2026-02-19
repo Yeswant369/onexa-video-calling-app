@@ -3,14 +3,17 @@ const videoGrid = document.getElementById('video-grid');
 const setupScreen = document.getElementById('setup-screen');
 const roomIdDisplay = document.getElementById('room-id-display');
 
-// WebRTC Configuration
 const configuration = {
     iceServers: [
-        { urls: "stun:stun.l.google.com:19302" }
-    ]
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+        { urls: "stun:stun2.l.google.com:19302" },
+        { urls: "stun:stun3.l.google.com:19302" },
+        { urls: "stun:stun4.l.google.com:19302" }
+    ],
+    iceCandidatePoolSize: 10
 };
 
-// Constraints
 const constraints = {
     audio: true,
     video: {
@@ -21,8 +24,7 @@ const constraints = {
 };
 
 let localStream;
-let myId;
-const peers = {}; // socketId -> { pc, stream, videoElement }
+const peers = {}; // socketId -> { pc, queue, videoElement }
 
 // Get or generate Room ID
 const urlPath = window.location.pathname;
@@ -38,11 +40,7 @@ async function startCall() {
     try {
         localStream = await navigator.mediaDevices.getUserMedia(constraints);
         setupScreen.classList.add('hidden');
-
-        // Add Local Video
         addVideoElement('local', localStream, true);
-
-        // Join Room
         socket.emit('join-room', roomId);
     } catch (err) {
         console.error('Error accessing media devices:', err);
@@ -50,63 +48,80 @@ async function startCall() {
     }
 }
 
-socket.on('connect', () => {
-    myId = socket.id;
-});
-
 socket.on('room-full', () => {
     alert('This room is full (max 3 people). Please try another room.');
     window.location.href = '/';
 });
 
-// Received when we join a room with existing users
 socket.on('all-users', (users) => {
-    users.forEach(userId => {
-        createPeerConnection(userId, true); // We are the initiator
-    });
+    console.log('Existing users in room:', users);
+    users.forEach(userId => createPeerConnection(userId, true));
 });
 
-// Received when a new user joins
 socket.on('user-joined', (userId) => {
-    createPeerConnection(userId, false); // New user will initiate, wait for offer
+    console.log('New user joined:', userId);
+    createPeerConnection(userId, false);
 });
 
 socket.on('offer', async ({ offer, sender }) => {
+    console.log('Received offer from:', sender);
+    if (!peers[sender]) createPeerConnection(sender, false);
     const pc = peers[sender].pc;
-    await pc.setRemoteDescription(new RTCSessionDescription(offer));
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    socket.emit('answer', { answer, target: sender });
+
+    try {
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        socket.emit('answer', { answer, target: sender });
+        processQueuedCandidates(sender);
+    } catch (err) {
+        console.error('Error handling offer:', err);
+    }
 });
 
 socket.on('answer', async ({ answer, sender }) => {
-    const pc = peers[sender].pc;
-    await pc.setRemoteDescription(new RTCSessionDescription(answer));
+    console.log('Received answer from:', sender);
+    if (peers[sender]) {
+        try {
+            await peers[sender].pc.setRemoteDescription(new RTCSessionDescription(answer));
+            processQueuedCandidates(sender);
+        } catch (err) {
+            console.error('Error handling answer:', err);
+        }
+    }
 });
 
 socket.on('ice-candidate', async ({ candidate, sender }) => {
-    try {
-        if (peers[sender] && peers[sender].pc) {
-            await peers[sender].pc.addIceCandidate(new RTCIceCandidate(candidate));
+    if (peers[sender]) {
+        const pc = peers[sender].pc;
+        if (pc.remoteDescription) {
+            try {
+                await pc.addIceCandidate(new RTCIceCandidate(candidate));
+            } catch (e) {
+                console.error('Error adding ice candidate:', e);
+            }
+        } else {
+            peers[sender].queue.push(candidate);
         }
-    } catch (e) {
-        console.error('Error adding received ice candidate', e);
     }
 });
 
 socket.on('user-left', (userId) => {
+    console.log('User left:', userId);
     if (peers[userId]) {
         peers[userId].pc.close();
-        peers[userId].videoElement.remove();
+        if (peers[userId].videoElement) peers[userId].videoElement.remove();
         delete peers[userId];
         updateGridLayout();
     }
 });
 
 function createPeerConnection(userId, isInitiator) {
-    const pc = new RTCPeerConnection(configuration);
+    if (peers[userId]) return;
 
-    peers[userId] = { pc };
+    console.log(`Creating PeerConnection for ${userId}, isInitiator: ${isInitiator}`);
+    const pc = new RTCPeerConnection(configuration);
+    peers[userId] = { pc, queue: [] };
 
     pc.onicecandidate = (event) => {
         if (event.candidate) {
@@ -117,12 +132,23 @@ function createPeerConnection(userId, isInitiator) {
         }
     };
 
-    pc.ontrack = (event) => {
-        if (!peers[userId].stream) {
-            peers[userId].stream = event.streams[0];
-            addVideoElement(userId, event.streams[0], false);
+    pc.oniceconnectionstatechange = () => {
+        console.log(`ICE State with ${userId}: ${pc.iceConnectionState}`);
+        if (pc.iceConnectionState === 'failed') {
+            pc.restartIce();
         }
     };
+
+    pc.ontrack = (event) => {
+        console.log(`Received track from ${userId}:`, event.track.kind);
+        const remoteStream = event.streams[0] || new MediaStream([event.track]);
+        addVideoElement(userId, remoteStream, false);
+    };
+
+    // Add tracks to PeerConnection
+    localStream.getTracks().forEach(track => {
+        pc.addTrack(track, localStream);
+    });
 
     if (isInitiator) {
         pc.onnegotiationneeded = async () => {
@@ -131,19 +157,37 @@ function createPeerConnection(userId, isInitiator) {
                 await pc.setLocalDescription(offer);
                 socket.emit('offer', { offer, target: userId });
             } catch (err) {
-                console.error(err);
+                console.error('Negotiation Error:', err);
             }
         };
     }
+}
 
-    // Add local tracks to peer connection after listeners are set
-    localStream.getTracks().forEach(track => {
-        pc.addTrack(track, localStream);
-    });
+function processQueuedCandidates(userId) {
+    if (peers[userId] && peers[userId].queue.length > 0) {
+        console.log(`Processing ${peers[userId].queue.length} queued candidates for ${userId}`);
+        peers[userId].queue.forEach(async (candidate) => {
+            try {
+                await peers[userId].pc.addIceCandidate(new RTCIceCandidate(candidate));
+            } catch (e) {
+                console.error('Error adding queued candidate:', e);
+            }
+        });
+        peers[userId].queue = [];
+    }
 }
 
 function addVideoElement(id, stream, isLocal) {
-    const container = document.createElement('div');
+    let container = document.getElementById(`container-${id}`);
+
+    if (container) {
+        // If container exists, just update the stream if it's different
+        const video = container.querySelector('video');
+        if (video.srcObject !== stream) video.srcObject = stream;
+        return;
+    }
+
+    container = document.createElement('div');
     container.className = 'video-container';
     container.id = `container-${id}`;
 
@@ -151,8 +195,13 @@ function addVideoElement(id, stream, isLocal) {
     video.srcObject = stream;
     video.autoplay = true;
     video.playsInline = true;
-    if (isLocal) video.muted = true;
-    else video.className = 'remote-video';
+    // VERY IMPORTANT: set muted for remote then unmute after a tiny delay or interaction
+    // to bypass some strict browser autoplay policies
+    if (isLocal) {
+        video.muted = true;
+    } else {
+        video.className = 'remote-video';
+    }
 
     const label = document.createElement('div');
     label.className = 'user-label';
@@ -165,6 +214,9 @@ function addVideoElement(id, stream, isLocal) {
     if (!isLocal) {
         peers[id].videoElement = container;
     }
+
+    // Force play for Safari/Chrome robustness
+    video.play().catch(e => console.warn("Video play failed (waiting for interaction):", e));
 
     updateGridLayout();
 }
