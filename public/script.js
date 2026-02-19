@@ -5,11 +5,29 @@ const roomIdDisplay = document.getElementById('room-id-display');
 
 const configuration = {
     iceServers: [
-        { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:stun1.l.google.com:19302" },
-        { urls: "stun:stun2.l.google.com:19302" },
-        { urls: "stun:stun3.l.google.com:19302" },
-        { urls: "stun:stun4.l.google.com:19302" }
+        {
+            urls: "stun:stun.relay.metered.ca:80",
+        },
+        {
+            urls: "turn:global.relay.metered.ca:80",
+            username: "16b99ab63d6212aec471251c",
+            credential: "GGEeVpdI8CZDCKdJ",
+        },
+        {
+            urls: "turn:global.relay.metered.ca:80?transport=tcp",
+            username: "16b99ab63d6212aec471251c",
+            credential: "GGEeVpdI8CZDCKdJ",
+        },
+        {
+            urls: "turn:global.relay.metered.ca:443",
+            username: "16b99ab63d6212aec471251c",
+            credential: "GGEeVpdI8CZDCKdJ",
+        },
+        {
+            urls: "turns:global.relay.metered.ca:443?transport=tcp",
+            username: "16b99ab63d6212aec471251c",
+            credential: "GGEeVpdI8CZDCKdJ",
+        }
     ],
     iceCandidatePoolSize: 10
 };
