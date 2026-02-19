@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Onexa | Minimal Video Call</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --accent-color: #38bdf8;
+            --text-color: #f8fafc;
+            --danger-color: #ef4444;
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        header {
+            padding: 1.5rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(10px);
+            z-index: 10;
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 600;
+            letter-spacing: -0.025em;
+            color: var(--accent-color);
+        }
+
+        .room-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            background: var(--card-bg);
+            padding: 0.5rem 1rem;
+            border-radius: 99px;
+            border: 1px solid var(--glass-border);
+        }
+
+        #room-id-display {
+            font-size: 0.875rem;
+            opacity: 0.8;
+        }
+
+        .copy-btn {
+            background: none;
+            border: none;
+            color: var(--accent-color);
+            cursor: pointer;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        main {
+            flex: 1;
+            position: relative;
+            padding: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #video-grid {
+            width: 100%;
+            height: 100%;
+            display: grid;
+            gap: 1rem;
+            transition: all 0.5s ease;
+        }
+
+        /* Responsive Layout Logic */
+        .grid-1 {
+            grid-template-columns: 1fr;
+        }
+
+        .grid-2 {
+            grid-template-columns: 1fr;
+        }
+
+        @media (min-width: 768px) {
+            .grid-2 {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        .grid-3 {
+            grid-template-columns: 1fr;
+        }
+
+        @media (min-width: 768px) {
+            .grid-3 {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .grid-3>div:last-child {
+                grid-column: span 2;
+            }
+        }
+
+        @media (min-width: 1024px) {
+            .grid-3 {
+                grid-template-columns: 1fr 1fr 1fr;
+            }
+
+            .grid-3>div:last-child {
+                grid-column: span 1;
+            }
+        }
+
+        .video-container {
+            position: relative;
+            background: #000;
+            border-radius: 1rem;
+            overflow: hidden;
+            aspect-ratio: 16/9;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--glass-border);
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+            /* Mirror view for everyone but local usually, but standard for WebRTC to mirror local */
+        }
+
+        .remote-video {
+            transform: scaleX(1);
+            /* Don't mirror remote videos */
+        }
+
+        .user-label {
+            position: absolute;
+            bottom: 1rem;
+            left: 1rem;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 0.25rem 0.75rem;
+            border-radius: 0.5rem;
+            font-size: 0.75rem;
+            backdrop-filter: blur(4px);
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 1rem;
+            background: var(--card-bg);
+            padding: 1rem 1.5rem;
+            border-radius: 2rem;
+            backdrop-filter: blur(15px);
+            border: 1px solid var(--glass-border);
+            z-index: 20;
+        }
+
+        .control-btn {
+            width: 3.5rem;
+            height: 3.5rem;
+            border-radius: 50%;
+            border: none;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .control-btn.off {
+            background: var(--danger-color);
+        }
+
+        .control-btn svg {
+            width: 1.5rem;
+            height: 1.5rem;
+        }
+
+        /* Welcome/Join Screen */
+        #setup-screen {
+            position: fixed;
+            inset: 0;
+            background: var(--bg-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        .setup-card {
+            background: var(--card-bg);
+            padding: 3rem;
+            border-radius: 1.5rem;
+            border: 1px solid var(--glass-border);
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+            backdrop-filter: blur(20px);
+        }
+
+        .setup-card h1 {
+            margin-bottom: 1.5rem;
+            font-weight: 600;
+        }
+
+        button.primary {
+            background: var(--accent-color);
+            color: var(--bg-color);
+            border: none;
+            padding: 0.75rem 2rem;
+            border-radius: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.3s;
+        }
+
+        button.primary:hover {
+            opacity: 0.9;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <div class="logo">ONEXA</div>
+        <div class="room-info">
+            <span id="room-id-display">Room: ...</span>
+            <button class="copy-btn" onclick="copyRoomLink()">Copy Link</button>
+        </div>
+    </header>
+
+    <main>
+        <div id="video-grid" class="grid-1">
+            <!-- Local video will be injected here -->
+        </div>
+
+        <div class="controls">
+            <button id="toggle-mic" class="control-btn" title="Toggle Mic">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                    <path d="M19 10v1a7 7 0 0 1-14 0v-1H3v1a9 9 0 0 0 8 8.94V21h2v-1.06A9 9 0 0 0 21 11v-1h-2Z" />
+                </svg>
+            </button>
+            <button id="toggle-cam" class="control-btn" title="Toggle Camera">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                    <path
+                        d="M16 4.5V1L9 1H7v2H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V4.5h-7zM10 18H3V6h10V4h2v2h3v12h-8zM7 9h6v1H7V9zm0 3h6v1H7v-1zm0 3h6v1H7v-1z" />
+                </svg>
+            </button>
+            <button id="leave-btn" class="control-btn off" title="Leave Call">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                    <path
+                        d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z" />
+                </svg>
+            </button>
+        </div>
+    </main>
+
+    <div id="setup-screen">
+        <div class="setup-card">
+            <h1>Ready to join?</h1>
+            <p style="margin-bottom: 2rem; opacity: 0.7;">Secure, peer-to-peer video conferencing.</p>
+            <button class="primary" onclick="startCall()">Join Meeting</button>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/script.js"></script>
+    <script>
+        function copyRoomLink() {
+            navigator.clipboard.writeText(window.location.href);
+            const btn = document.querySelector('.copy-btn');
+            const originalText = btn.innerText;
+            btn.innerText = 'Copied!';
+            setTimeout(() => btn.innerText = originalText, 2000);
+        }
+    </script>
+</body>
+
+</html>
