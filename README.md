@@ -1,4 +1,4 @@
-# Onexa Video Call
+# Video Call app
 
 A minimal, secure, 3-person WebRTC video calling application built with Node.js, Socket.io, and Vanilla JS.
 
